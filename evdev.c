@@ -107,12 +107,12 @@ static int print_device_info(int fd) {
 }
 
 void packet_initalizer(struct packet *packet){
-	char default = 0x80;
+	int default = 128;
 
-	memcpy(packet->aileron, default, 1);
-	memcpy(packet->elevator, default, 1);
-	memcpy(packet->rudder, default, 1);
-	memcpy(packet->motor, default, 1);
+	packet->aileron = default;
+	packet->elevator = default;
+	packet->rudder = default;
+	packet->motor = default;
 }
 
 /* I am removing trim temporarily as it is increaming the complexity of the project and i just need to have something done rather than a bunch of theory. 
@@ -174,7 +174,6 @@ void set_trim(struct packet *packet, struct trim *trim, int flag, bool increase)
 
 void packet_generator(struct packet *packet, signed int value, int flag){
 	unsigned int math;
-	char result;
 	math = ((value + 32768) * 255) / 65536;
 
 	packet_update(packet, math, flag);
@@ -185,9 +184,9 @@ void rudder_generator(struct packet *packet, int value, int flag){
 	//printf("%i\n", flag);
 	//printf("%i\n", value);
 	if(flag == 0){
-		math = ((1023-value)*49)/1023;
+		math = ((1023-value)*128)/1023;
 	}else if (flag == 1){
-		math = ((value*49)/1023) + 49;
+		math = ((value*128)/1023) + 128;
 	}
 	//printf("%i\n", math);
 	packet_update(packet, math, 2);
@@ -198,30 +197,29 @@ void packet_update(struct packet *packet, unsigned int math, int flag){
 	char buff[2];
 	//Maybe move this to after the deadzone which is just below
 	//math = apply_trim(trim, math, flag);
-	if(math <= 52 && math >= 43){
-		math = 50;
-	}
 	if(flag == 0){
 		fallback.aileron = math;
-		snprintf(buff, 3, "%02u", math % 100);
-		memcpy(packet->aileron, buff, 2);
+		packet->aileron = math;
+		//snprintf(buff, 3, "%02u", math % 100);
+		//memcpy(packet->aileron, buff, 2);
 	}else if(flag == 1){
 		fallback.elevator = math;
-		snprintf(buff, 3, "%02u", math % 100);
-		memcpy(packet->elevator, buff, 2);
+		packet->rudder = math;
+		//snprintf(buff, 3, "%02u", math % 100);
+		//memcpy(packet->elevator, buff, 2);
 	}else if(flag == 2){
 		fallback.rudder = math;
-		snprintf(buff, 3, "%02u", math % 100);
-		memcpy(packet->rudder, buff, 2);
+		packet->rudder = math;
+		//snprintf(buff, 3, "%02u", math % 100);
+		//memcpy(packet->rudder, buff, 2);
 	}else if(flag == 3){
 		fallback.motor = math;
-		snprintf(buff, 3, "%02u", math % 100);
-		memcpy(packet->motor, buff, 2);
+		packet->motor = math;
+		//snprintf(buff, 3, "%02u", math % 100);
+		//memcpy(packet->motor, buff, 2);
 	}
 
 	//THIS IS FOR TESTING !!! REMOVE !!!
-	
-	strcpy(packet->motor, "50");
 	
 	printf("%x", packet->flag);
 	printf(" ");
@@ -241,6 +239,7 @@ void packet_update(struct packet *packet, unsigned int math, int flag){
 int packet_out(struct packet *packet){
 	int fd, len;
 	struct termios options;
+	char packetBuff[100];
 	//memcpy(packet->flag, "\xaa", 1);
 	packet->endflag = '\n';
 	packet->flag = '\xaa';	
@@ -262,6 +261,8 @@ int packet_out(struct packet *packet){
 
 	len = write(fd, packet, 10);
 	printf("Wrote %d bytes over GPIO\n", len);
+	int n = read(fd, packetBuff, sizeof(packetBuff));
+	printf("%s", packetBuff);
 	
 	close(fd);
 	return 0;	
@@ -275,6 +276,21 @@ int print_events(int fd) {
 	//unsigned int math = 0;
 	printf("Testing ... (interrupt to exit)\n");
 	packet_initalizer(&packet);
+
+	
+	if(sendATCommand("AT+RST") != 0){
+		printf("unable to talk to esp8266");
+		return EXIT_FAILURE;
+	}
+	sleep(2);
+	int err = sendATCommand("ATE0");
+	sleep(2);
+	int err = sendATCommand("AT+CWMODE=1");
+	sleep(2);
+	err = sendATCommand("AT+CWJAP=\"ESP8266\",\"testplane\"");
+	sleep(5);
+	
+
 	
 	
 

@@ -8,7 +8,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
-#define SERIAL_DEVICE "/dev/ttyUSB0"
+#define SERIAL_DEVICE "/dev/serial/by-id/usb-FTDI_TTL232R-3V3_FTFAZZHZ-if00-port0""
 
 // Modes supported by the ESP8266
 #define ESP_8266_MODE_CLIENT       1
@@ -32,9 +32,10 @@
  *
  * Returns 0 on success, -1 on error.
  */
-static int sendATCommand(char *at_command, char **response) {
+static int sendATCommand(char *at_command) {
     int err;
     int fd = open(SERIAL_DEVICE, O_RDWR);
+    char response[200];
     unsigned char crlf[] = {0x0d, 0x0a};
 
 
@@ -42,16 +43,15 @@ static int sendATCommand(char *at_command, char **response) {
         char err_str[100];
         strerror_r(errno, err_str, 100); // If we got an error, convert errno to string and print.
         fprintf(stderr, "[sendATCommand] Error opening %s: %s\n", SERIAL_DEVICE, err_str);
-        *response = NULL; // Indicate that we didn't malloc() any space for response.
         return -1;
     }
 
-    *response = malloc(4096); // alloc big ass buffer for response.
 
     err = write(fd, at_command, strlen(at_command));
     err = write(fd, crlf, 2); // Send a CRLF to indicate end of AT Command
 
-    err = read(fd, *response, 4096);
+    err = read(fd, response, sizeof(response));
+    printf("%s", packetBuff);
 
     close(fd);
 

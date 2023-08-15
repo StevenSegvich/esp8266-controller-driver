@@ -1,18 +1,19 @@
 struct packet{
-	char flag;
-	char aileron;
-	char elevator;
-	char rudder;
-	char motor;
-	char endflag;
+	int flag;
+	int aileron;
+	int elevator;
+	int rudder;
+	int motor;
+	int endflag;
 };
-
+/*
 struct trim{
 	int aileron;
 	int elevator;
 	int rudder;
 	int motor;
 };
+*/
 
 struct fallback{
 	int aileron;
