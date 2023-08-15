@@ -10,6 +10,7 @@
 #include <termios.h>
 #include <stdbool.h>
 #include "evdev.h"
+#include "es8266drv.c"
 
 #define BITS_PER_LONG (sizeof(long) * 8)
 #define NBITS(x) ((((x)-1)/BITS_PER_LONG)+1)
@@ -105,21 +106,24 @@ static int print_device_info(int fd) {
 	return 0;
 }
 
-void trim_initalizer(struct trim *trim){
-	trim->aileron = 0;
-	trim->elevator = 0;
-	trim->rudder = 0;
-}
-
 void packet_initalizer(struct packet *packet){
-	char buff[2] = {'5', '0'};
+	char default = 0x80;
 
-	memcpy(packet->aileron, buff, 2);
-	memcpy(packet->elevator, buff, 2);
-	memcpy(packet->rudder, buff, 2);
-	memcpy(packet->motor, buff, 2);
+	memcpy(packet->aileron, default, 1);
+	memcpy(packet->elevator, default, 1);
+	memcpy(packet->rudder, default, 1);
+	memcpy(packet->motor, default, 1);
 }
 
+/* I am removing trim temporarily as it is increaming the complexity of the project and i just need to have something done rather than a bunch of theory. 
+In the future, it also needs to be re implimented to function properly with the decimal system for numbers. 
+
+
+void trim_initalizer(struct trim *trim){
+	trim->aileron = 0x00;
+	trim->elevator = 0x00;
+	trim->rudder = 0x00;
+}
 
 unsigned int apply_trim(struct trim *trim, signed int math, int flag){
 	if(flag == 0){
@@ -138,7 +142,7 @@ unsigned int apply_trim(struct trim *trim, signed int math, int flag){
 }
 
 void set_trim(struct packet *packet, struct trim *trim, int flag, bool increase){
-	int trimval = 0;
+	char trimval = 0x00;
 	if(increase == true){
 		trimval = 5;
 	}else{
@@ -166,13 +170,17 @@ void set_trim(struct packet *packet, struct trim *trim, int flag, bool increase)
 //AIleron trim is included but is currently unused
 //x button on the controller will be for switching the trim
 
-void packet_generator(struct packet *packet, struct trim *trim, signed int value, int flag){
+*/
+
+void packet_generator(struct packet *packet, signed int value, int flag){
 	unsigned int math;
-	math = ((value + 32768) * 99) / 65536;
-	packet_update(packet, trim, math, flag);
+	char result;
+	math = ((value + 32768) * 255) / 65536;
+
+	packet_update(packet, math, flag);
 }
 
-void rudder_generator(struct packet *packet, struct trim *trim, int value, int flag){
+void rudder_generator(struct packet *packet, int value, int flag){
 	unsigned int math;
 	//printf("%i\n", flag);
 	//printf("%i\n", value);
@@ -182,11 +190,11 @@ void rudder_generator(struct packet *packet, struct trim *trim, int value, int f
 		math = ((value*49)/1023) + 49;
 	}
 	//printf("%i\n", math);
-	packet_update(packet, trim, math, 2);
+	packet_update(packet, math, 2);
 }
 //This function needs to be reworked at some point. Maybe split into a function to preform math on the value passed, checking if its for the control surfaces vs the motor, as rudders are controled by the triggers they need a different mathematical function preformed
 //Also helps in a situation such as the trim set in which i need to call the packet update to apply the trim, rather than waiting for the next update to the corresponding control
-void packet_update(struct packet *packet, struct trim *trim, unsigned int math, int flag){
+void packet_update(struct packet *packet, unsigned int math, int flag){
 	char buff[2];
 	//Maybe move this to after the deadzone which is just below
 	//math = apply_trim(trim, math, flag);
@@ -217,17 +225,13 @@ void packet_update(struct packet *packet, struct trim *trim, unsigned int math, 
 	
 	printf("%x", packet->flag);
 	printf(" ");
-	printf("%c", packet->aileron[0]);
-	printf("%c", packet->aileron[1]);
+	printf("%d", packet->aileron);
 	printf(" ");
-	printf("%c", packet->elevator[0]);
-	printf("%c", packet->elevator[1]);
+	printf("%d", packet->elevator);
 	printf(" ");
-	printf("%c", packet->rudder[0]);
-	printf("%c", packet->rudder[1]);
+	printf("%d", packet->rudder);
 	printf(" ");
-	printf("%c", packet->motor[0]);
-	printf("%c", packet->motor[1]);
+	printf("%d", packet->motor);
 	printf(" ");
 	printf("%x", packet->endflag);
 	printf("\n");
@@ -268,12 +272,10 @@ int print_events(int fd) {
 	struct input_event ev;
 	unsigned int size;
 	struct packet packet;
-	struct trim trim;
-	int trim_switch = 0;
 	//unsigned int math = 0;
 	printf("Testing ... (interrupt to exit)\n");
 	packet_initalizer(&packet);
-	trim_initalizer(&trim);
+	
 	
 
 	/*
@@ -299,21 +301,23 @@ int print_events(int fd) {
 			if(ev.value >= 2048 || ev.value <= -2048){	
 				//printf("type: %i, code: %i, value: %i\n", ev.type, ev.code, ev.value);
 				//math = ((ev.value + 32768) * 100) / 65536;
-				packet_generator(&packet, &trim, ev.value, 1);
+				packet_generator(&packet, ev.value, 1);
 				packet_out(&packet);
 			}else{
-				packet_update(&packet, &trim, 50, 1);
-				packet_out(&packet);
+				if(packet->elevator != 0x80){
+					packet_update(&packet, 50, 1);
+					packet_out(&packet);
+				}
 			}
 			
 		}
 //this is for roll control (aileron)	
 		else if(ev.code == 3){
 			if(ev.value >= 2048 || ev.value <= -2048){
-				packet_generator(&packet, &trim, ev.value, 0);
+				packet_generator(&packet, ev.value, 0);
 				packet_out(&packet);
 			}else{
-				packet_update(&packet, &trim, 50, 0);
+				packet_update(&packet, 50, 0);
 				packet_out(&packet);
 			}
 		}
@@ -321,14 +325,14 @@ int print_events(int fd) {
 //This is for yaw (rudder)
 		else if(ev.code == 5 || ev.code == 2){
 			if(ev.value > 50){
-				rudder_generator(&packet, &trim, ev.value, ev.code % 2);
+				rudder_generator(&packet, ev.value, ev.code % 2);
 				packet_out(&packet);
 			}else{
-				packet_update(&packet, &trim, 50, ev.code % 2);
+				packet_update(&packet, 50, ev.code % 2);
 				packet_out(&packet);
 			}
 		}
-
+/*
 //This is for x button
 		else if(ev.code == 307){
 			if(ev.value == 1){
@@ -340,9 +344,9 @@ int print_events(int fd) {
 //This is for right bumper
 		else if(ev.code == 311){
 			if(trim_switch == 1){
-				set_trim(&packet, &trim, ELEVATOR, true);
+				set_trim(&packet, ELEVATOR, true);
 			}else{
-				set_trim(&packet, &trim, RUDDER, true);
+				set_trim(&packet, RUDDER, true);
 			}
 		}
 //This is for left bumper
@@ -350,14 +354,15 @@ int print_events(int fd) {
 
 		else if(ev.code == 310){
 			if(trim_switch == 1){
-				set_trim(&packet, &trim, ELEVATOR, false);
+				set_trim(&packet, ELEVATOR, false);
 			}else{
-				set_trim(&packet,&trim, RUDDER, false);
+				set_trim(&packet, RUDDER, false);
 			}
 		}
 		//else if(ev.code != 0 && ev.code != 1 && ev.code != 3 && ev.code != 4){
 		//	printf("type: %i, code: %i, value: %i\n", ev.type, ev.code, ev.value);
 		//}
+		*/
 
 		//printf("Event: time %ld.%06ld, ", ev.time.tv_sec, ev.time.tv_usec);
 		//printf("type: %i, code: %i, value: %i\n", ev.type, ev.code, ev.value);

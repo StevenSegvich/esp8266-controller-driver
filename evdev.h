@@ -1,9 +1,9 @@
 struct packet{
 	char flag;
-	char aileron[2];
-	char elevator[2];
-	char rudder[2];
-	char motor[2];
+	char aileron;
+	char elevator;
+	char rudder;
+	char motor;
 	char endflag;
 };
 
