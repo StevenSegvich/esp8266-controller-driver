@@ -10,7 +10,7 @@
 #include <termios.h>
 #include <stdbool.h>
 #include "evdev.h"
-#include "es8266drv.c"
+#include "esp8266drv.c"
 
 #define BITS_PER_LONG (sizeof(long) * 8)
 #define NBITS(x) ((((x)-1)/BITS_PER_LONG)+1)
@@ -107,15 +107,15 @@ static int print_device_info(int fd) {
 }
 
 void packet_initalizer(struct packet *packet){
-	int default = 128;
+	int start = 128;
 
-	packet->aileron = default;
-	packet->elevator = default;
-	packet->rudder = default;
-	packet->motor = default;
+	packet->aileron = start;
+	packet->elevator = start;
+	packet->rudder = start;
+	packet->motor = start;
 }
 
-/* I am removing trim temporarily as it is increaming the complexity of the project and i just need to have something done rather than a bunch of theory. 
+/* I am removing trim temporarily as it is increasing the complexity of the project and i just need to have something done rather than a bunch of theory. 
 In the future, it also needs to be re implimented to function properly with the decimal system for numbers. 
 
 
@@ -194,7 +194,6 @@ void rudder_generator(struct packet *packet, int value, int flag){
 //This function needs to be reworked at some point. Maybe split into a function to preform math on the value passed, checking if its for the control surfaces vs the motor, as rudders are controled by the triggers they need a different mathematical function preformed
 //Also helps in a situation such as the trim set in which i need to call the packet update to apply the trim, rather than waiting for the next update to the corresponding control
 void packet_update(struct packet *packet, unsigned int math, int flag){
-	char buff[2];
 	//Maybe move this to after the deadzone which is just below
 	//math = apply_trim(trim, math, flag);
 	if(flag == 0){
@@ -285,7 +284,7 @@ int print_events(int fd) {
 	sleep(2);
 	int err = sendATCommand("ATE0");
 	sleep(2);
-	int err = sendATCommand("AT+CWMODE=1");
+	err = sendATCommand("AT+CWMODE=1");
 	sleep(2);
 	err = sendATCommand("AT+CWJAP=\"ESP8266\",\"testplane\"");
 	sleep(5);
@@ -320,10 +319,8 @@ int print_events(int fd) {
 				packet_generator(&packet, ev.value, 1);
 				packet_out(&packet);
 			}else{
-				if(packet->elevator != 0x80){
-					packet_update(&packet, 50, 1);
-					packet_out(&packet);
-				}
+				packet_update(&packet, 128, 1);
+				packet_out(&packet);
 			}
 			
 		}
@@ -333,7 +330,7 @@ int print_events(int fd) {
 				packet_generator(&packet, ev.value, 0);
 				packet_out(&packet);
 			}else{
-				packet_update(&packet, 50, 0);
+				packet_update(&packet, 128, 0);
 				packet_out(&packet);
 			}
 		}
@@ -344,7 +341,7 @@ int print_events(int fd) {
 				rudder_generator(&packet, ev.value, ev.code % 2);
 				packet_out(&packet);
 			}else{
-				packet_update(&packet, 50, ev.code % 2);
+				packet_update(&packet, 128, ev.code % 2);
 				packet_out(&packet);
 			}
 		}
